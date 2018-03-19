@@ -8,9 +8,10 @@
 #include <string.h>
 #include <limits.h>
 #include <sys/time.h>
+#include <math.h>
 #define SIZE 1000
 #define PP 0
-
+#define MULSIZE 15
 /* * * * * * * * * * * * * * * * * * * * * *
 * timeval timediff()
 * Calculate two timeval difference, return timeval
@@ -86,26 +87,27 @@ long getRuns(char *filename)
 }
 
 /* * * * * * * * * * * * * * * * * * * * * *
-* long getRuns()
-* load the input file, split into runs, return total number of runs
+* void merge()
+* load runs, then merge one by one until all runs exhaust
  * * * * * * * * * * * * * * * * * * * * * */
 
-void merge(char *filename, int numRuns, char *outfilename)
+void merge(char *filename, int start, long numRuns, char *out_file_name)
 {
-	FILE *outFile = fopen(outfilename,"wb");
-	int *ptr[numRuns];
-	// int *index[numRuns];
+    FILE *outFile;
+    outFile = fopen(out_file_name, "wb");
+	int *ptr[numRuns];   //array of pointers to indicate each runs current value to be compare
 	int input_buffer[SIZE];
 	int output_buffer[SIZE];
 	int runSize = SIZE/numRuns;
 	FILE *runFiles[numRuns];
-	int runEnd[numRuns];
-	//read all runs with runSize into input_buffer
+	int runEnd[numRuns]; //array of integers to indicate each runs end location, at the end of runs, it could less than run size.
+
+    //read all runs with runSize into input_buffer
 	for (int i = 0; i < numRuns; ++i)
 	{
 	    char *runfilename = malloc((strlen(filename) + 4) * sizeof(char));
 	    char *index = malloc(4 * sizeof(char));
-		sprintf(index, ".%03d", i);
+		sprintf(index, ".%03d", i + start);
 		strcpy(runfilename, filename);
 		strcat(runfilename, index);
 
@@ -116,24 +118,26 @@ void merge(char *filename, int numRuns, char *outfilename)
 		runEnd[i] = len;
 
 		ptr[i] = input_buffer + i * runSize;
-		// index[i] = input_buffer + i * runSize;
 	}
 
 	int empty_runs = 0;
-	int index = 0;
+	int index = 0;   //index to indicate location of output_buffer
 
 	while (empty_runs < numRuns)
 	{
         int min_val = INT_MAX;
 		int index_minval = 0;
-        for (int i = 0; i < numRuns; ++i)
+
+        for (int i = 0; i < numRuns; ++i) // compare of each runs current value
 		{
 			if (ptr[i] == NULL){ continue; }
-			//this run empty, load more
+
+            //this run empty, load more
 			if (ptr[i] >= input_buffer + i * runSize + runEnd[i])
 			{
 				size_t len = fread(input_buffer + i * runSize, sizeof(int), runSize, runFiles[i]);
-				if (len == 0)
+
+                if (len == 0)
 				{
 					ptr[i] = NULL;
 					empty_runs++;
@@ -144,12 +148,12 @@ void merge(char *filename, int numRuns, char *outfilename)
 					ptr[i] = input_buffer + i * runSize; // reset ptr
 				}
 			}
-			if (ptr[i] != NULL && *ptr[i] < min_val)
+
+            if (ptr[i] != NULL && *ptr[i] < min_val)
 			{
 				min_val = *ptr[i];
 				index_minval = i;
 			}
-			// else if
 		}
 
 		output_buffer[index++] = min_val;
@@ -170,7 +174,8 @@ void merge(char *filename, int numRuns, char *outfilename)
             index = 0;
 		}
 	}
-	fwrite(output_buffer, sizeof(int), index-1, outFile);
+
+    fwrite(output_buffer, sizeof(int), index-1, outFile);  //write index-1 integer into file instead of index
 
     if (PP)
     {
@@ -184,27 +189,61 @@ void merge(char *filename, int numRuns, char *outfilename)
 
 }
 
-int main(int argc, char const *argv[])
+/* * * * * * * * * * * * * * * * * * * * * *
+* void mult_merge()
+* load runs, generate super runs first, then merge them until all runs exhaust
+ * * * * * * * * * * * * * * * * * * * * * */
+void mult_merge(char *filename, int numRuns, char *out_file_name)
+{
+    //create super runs
+    int num_super_runs = (int) ceil((double)numRuns / MULSIZE);
+    for (int j = 0; j < num_super_runs; ++j) {
+            long merge_size = MULSIZE;
+            if (j == num_super_runs-1)
+            {
+                merge_size = numRuns-j*MULSIZE;
+            }
+            char *super_filename;
+            super_filename = malloc((strlen(filename) + 10) * sizeof(char));
+            char *index = malloc(4 * sizeof(char));
+            sprintf(index, ".%03d", j);
+            strcpy(super_filename, filename);
+            strcat(super_filename, ".super");
+            strcat(super_filename, index);
+
+            merge(filename, j * MULSIZE, merge_size, super_filename);
+        }
+    //merge super runs
+    char *super_filename;
+    super_filename = malloc((strlen(filename) + 6) * sizeof(char));
+    strcpy(super_filename, filename);
+    strcat(super_filename, ".super");
+    merge(super_filename, 0, num_super_runs, out_file_name);
+}
+
+int main(int argc, char **argv)
 {
 	struct timeval tms;
 	struct timeval tme;
 	//get program start time stamps
 	gettimeofday( &tms, NULL );
+
 	long numRuns = getRuns("input.bin");
-	merge("input.bin", numRuns, "out.bin");
-	// //Basic Mergesort
-	// if (strcmp(argv[1],"--basic")==0)
-	// {
-	// 	long numRuns = getRuns(argv[2]);
-	// 	merge(argv[2], numRuns, argv[3]);
-	// }
-	// //Multistep Mergesort
-	// if (strcmp(argv[1],"--multistep")==0)
-	// {
-	// 	long numRuns = getRuns(argv[2]);
-	// 	merge(argv[2], numRuns, argv[3]);
-	// }
-	// //Replacement selection mergesort
+	merge("input.bin", 0, numRuns, "out.bin");
+//    mult_merge("input.bin",numRuns, "outs.bin");
+    // Basic Mergesort
+//    if (strcmp(argv[1],"--basic")==0)
+//    {
+//        long numRuns;
+//        numRuns = getRuns(argv[2]);
+//	 	merge(argv[2], 0, numRuns, argv[3]);
+//    }
+//    //Multistep Mergesort
+//    else if (strcmp(argv[1], "--multistep") == 0) {
+//        long numRuns = getRuns(argv[2]);
+//        mult_merge(argv[2], numRuns, argv[3]);
+//    }
+    // //Replacement selection mergesort
 	// if (strcmp(argv[1],"--replacement")==0)
 	// {
 	// 	long numRuns = getRuns(argv[2]);
