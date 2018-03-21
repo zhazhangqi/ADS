@@ -11,11 +11,11 @@
 #include <math.h>
 
 
-#define BUFFERSIZE 100
+#define BUFFERSIZE 1000
 #define PP 0
 #define MULSIZE 15
-#define HEAPSIZE 75;
-''
+#define HEAP_SIZE 750
+
 /* * * * * * * * * * * * * * * * * * * * * *
 * timeval timediff()
 * Calculate two timeval difference, return timeval
@@ -48,16 +48,12 @@ void sift(int *heap, int i, int n)
     {
         j = i * 2 + 1;
         k = j + 1;
-        if(k < n && heap[k] < heap[j])
-        {
+        if(k < n && heap[k] < heap[j]) {
             sm = k;
-        }
-        else
-        {
+        } else {
             sm = j;
         }
-        if(heap[i] < heap[sm])
-        {
+        if(heap[i] < heap[sm]) {
             return ;
         }
         tmp = heap[i];
@@ -68,24 +64,18 @@ void sift(int *heap, int i, int n)
 }
 void heapify(int *heap, int n)
 {
-    for(int i = n / 2; i >= 0; i--)
-    {
-        sift(heap, i, n);
-    }
+    for(int i = n / 2; i >= 0; i--) { sift(heap, i, n); }
 }
 void print_array(char *start_name, int *array, int array_start, int array_size)
 {
     printf("%s\n", start_name);
-    for (int j = array_start; j < array_size; ++j)
-    {
-        printf("%d\n", array[j]);
-    }
+    for (int j = array_start; j < array_size; ++j) { printf("%d\n", array[j]); }
 }
 /* * * * * * * * * * * * * * * * * * * * * *
 * long getRuns()
 * load the input file, split into runs, return total number of runs
  * * * * * * * * * * * * * * * * * * * * * */
-long getRuns(char *filename)
+int getRuns(char *filename)
 {
     int input_buffer[BUFFERSIZE];
     FILE *fp = fopen(filename, "r");
@@ -122,137 +112,117 @@ long getRuns(char *filename)
         }
         fclose(fp);
     }
-    return i/BUFFERSIZE;
+    return (int)i/BUFFERSIZE;
 }
-
+char * create_file_name(char *base_name, int index)
+{
+    char *run_file_name = malloc((strlen(base_name) + 4) *sizeof(char));
+    char *index_str = malloc(4 * sizeof(char));
+    sprintf(index_str, ".%03d", index);
+    strcpy(run_file_name, base_name);
+    strcat(run_file_name, index_str);
+    return run_file_name;
+}
 /* * * * * * * * * * * * * * * * * * * * * *
 * long get_RS_runs()
 * load the input file, using replacement selection method to split into runs, return total number of runs
  * * * * * * * * * * * * * * * * * * * * * */
-long get_RS_runs(char *filename)
+int get_RS_runs(char *filename)
 {
     int input_buffer[BUFFERSIZE];
     int output_buffer[BUFFERSIZE];
     FILE *fp = fopen(filename, "r");
-    long i = 0;
-    int run_index = 0;
     if (fp != NULL) {
         if (fseek(fp, 0L, SEEK_END) == 0) {
             // read out the length of file
-            long buffer_size = ftell(fp)/sizeof(int);
-            printf("total size is: %ld\n", buffer_size);
-
-            int bytes_read, heap_end;
-            //read 750 bytes first, if there are 750 bytes in the file
+            long input_size = ftell(fp)/sizeof(int);
             fseek(fp, 0L, SEEK_SET);
-            size_t len = fread(input_buffer, sizeof(int), HEAPSIZE, fp);
-            heapify(input_buffer, len);
-            bytes_read = (int)len;
-            heap_end = (int)len-1;
-            //initial input_buffer parameters
-            int buffer_index = BUFFERSIZE;
-            int buffer_end = BUFFERSIZE;  //buffer side end index
+            printf("total size is: %ld\n", input_size);
+            int run_index = 0;
+            if (input_size <= BUFFERSIZE){
+                char *run_file_name = create_file_name(filename, 0);
+                FILE *out_file = fopen(run_file_name, "wb");
+                size_t len = fread(input_buffer, sizeof(int), (size_t)input_size, fp);
+                qsort(input_buffer, sizeof(int), (size_t)input_size, cmpfunc);
+                fwrite(input_buffer, sizeof(int), (size_t)input_size, out_file);
+                fclose(out_file);
+            }
+            else {
 
-            while (bytes_read <= buffer_size)  //there are left bytes in the file
-            {
-                //generate run file name
-                char *run_file_name = malloc((strlen(filename) + 4) *sizeof(char));
-                char *index = malloc(4 * sizeof(char));
-                sprintf(index, ".%03d", run_index);
-                strcpy(run_file_name, filename);
-                strcat(run_file_name, index);
-                FILE *out_run_file = fopen(run_file_name,"wb");
+                int bytes_read, heap_end_index, buffer_index, buffer_end, output_index;
+                //read 750 bytes first
+                size_t len = fread(input_buffer, sizeof(int), (size_t)HEAP_SIZE, fp);
+                bytes_read = (int) len;
 
-                heap_end = HEAPSIZE - 1;
-                int output_index = 0;
-                while (heap_end >= 0)
+                //initial input_buffer parameters
+                buffer_index = BUFFERSIZE;
+                buffer_end = BUFFERSIZE;  //buffer side end index
+
+                while (1)
                 {
-                    //sift the heap into order
-                    sift(input_buffer, 0, heap_end+1);
-                    //if output buffer is full, write to file, reset the index
-                    if (output_index >= BUFFERSIZE)
-                    {
-                        fwrite(output_buffer, sizeof(int), BUFFERSIZE, out_run_file);
-                        output_index = 0;
-                    }
+                    //generate run file name
+                    char *run_file_name = create_file_name(filename,run_index);
+                    FILE *out_run_file = fopen(run_file_name, "wb");
 
-                    //if input buffer reaches the end, load more from file
-                    if (buffer_index >= buffer_end)
-                    {
-                        size_t len = fread(input_buffer + HEAPSIZE, sizeof(int), BUFFERSIZE-HEAPSIZE, fp);
-                        bytes_read += (int)len;
-                        buffer_index = HEAPSIZE;
-                        buffer_end = HEAPSIZE + (int)len;
-                        if (len == 0){
-                            int temp = 0;
-                            qsort(input_buffer, (size_t)(heap_end+1) , sizeof(int), cmpfunc);
-                            while (temp <= heap_end){
-                                output_buffer[output_index++] = input_buffer[temp++];
-                            }
-                            temp = 0;
-                            int temp2 = heap_end+1;
-                            while (temp2 < HEAPSIZE) {
-                                input_buffer[temp++] = input_buffer[temp2++];
-                            }
-//                            printf("break heap_end %d\n", heap_end);
-//                            print_array("--------",input_buffer, 0, BUFFERSIZE);
+                    heap_end_index = HEAP_SIZE-1;
+                    output_index = 0;
+                    heapify(input_buffer,HEAP_SIZE);
 
-                            fwrite(output_buffer, sizeof(int), (size_t)output_index, out_run_file);
-                            fclose(out_run_file);
-                            run_index++;
+                    while (heap_end_index >= 0) {
+                        //sift the heap into order
+                        sift(input_buffer, 0, heap_end_index + 1);
 
-                            qsort(input_buffer,  (size_t)(heap_end+1), sizeof(int), cmpfunc);
-                            char *last_run_file_name = malloc((strlen(filename) + 4) * sizeof(char));
-                            char *last_index = malloc(4 * sizeof(char));
-                            sprintf(last_index, ".%03d", run_index);
-                            strcpy(last_run_file_name, filename);
-                            strcat(last_run_file_name, last_index);
-                            out_run_file = fopen(run_file_name, "wb");
-                            fwrite(input_buffer, sizeof(int), (size_t) heap_end, out_run_file);
-                            fclose(out_run_file);
-
-                            return run_index;
+                        //if output buffer is full, write to file, reset the index
+                        if (output_index >= BUFFERSIZE) {
+                            fwrite(output_buffer, sizeof(int), BUFFERSIZE, out_run_file);
+                            output_index = 0;
                         }
-                    }
 
-                    //put the top of heap into output buffer, then load one bytes to heap or decrease heap by one
-                    output_buffer[output_index++] = input_buffer[0];
-                    if (input_buffer[0] <= input_buffer[buffer_index])
-                    {
-                        input_buffer[0] = input_buffer[buffer_index++];
-                    } else
-                    {
-                        input_buffer[0] = input_buffer[heap_end];
-                        input_buffer[heap_end--] = input_buffer[buffer_index++];
-                    }
+                        //if input buffer reaches the end, load more from file
+                        if (buffer_index >= buffer_end) {
+                            len = fread(input_buffer + HEAP_SIZE, sizeof(int), BUFFERSIZE - HEAP_SIZE, fp);
+                            bytes_read += (int) len;
+                            if (len != 0){
+                                buffer_index = HEAP_SIZE;
+                                buffer_end = HEAP_SIZE + (int)len;
+                            } else {
+                                //write current output buffer into file
+                                fwrite(output_buffer, sizeof(int), (size_t) output_index, out_run_file);
+                                fclose(out_run_file);
+                                run_index++;
 
+                                //sort data in primary and secondary heap
+                                qsort(input_buffer, (size_t)HEAP_SIZE, sizeof(int), cmpfunc);
+
+                                //write sorted input buffer data into next file
+                                run_file_name = create_file_name(filename,run_index);
+                                out_run_file = fopen(run_file_name, "wb");
+                                fwrite(input_buffer, sizeof(int), (size_t) HEAP_SIZE, out_run_file);
+                                fclose(out_run_file);
+                                return ++run_index;
+                            }
+                        }
+
+                        //put the top of heap into output buffer, then load one bytes to heap or decrease heap by one
+                        output_buffer[output_index++] = input_buffer[0];
+                        if (input_buffer[0] <= input_buffer[buffer_index]) {
+                            input_buffer[0] = input_buffer[buffer_index++];
+                        } else {
+                            input_buffer[0] = input_buffer[heap_end_index];
+                            input_buffer[heap_end_index--] = input_buffer[buffer_index++];
+                        }
+
+                    }
+                    //heap end index run to -1, write data and reloop to next file
+                    fwrite(output_buffer, sizeof(int), (size_t) output_index, out_run_file);
+                    fclose(out_run_file);
+                    run_index++;
                 }
 
-                fwrite(output_buffer, sizeof(int), (size_t)output_index, out_run_file);
-                fclose(out_run_file);
-                run_index++;
-//                print_array(run_file_name,output_buffer, 0, output_index);
-//                printf("heap_end %d\n", heap_end);
-//                printf("bytes_read %d\n", bytes_read);
-            }
-            if ( heap_end >= 0) {
-                qsort(input_buffer, sizeof(int), heap_end+1, cmpfunc);
-                char *run_file_name = malloc((strlen(filename) + 4) * sizeof(char));
-                char *index = malloc(4 * sizeof(char));
-                sprintf(index, ".%03d", run_index);
-                strcpy(run_file_name, filename);
-                strcat(run_file_name, index);
-                FILE *out_run_file = fopen(run_file_name, "wb");
-                fwrite(input_buffer, sizeof(int), (size_t) heap_end, out_run_file);
-                fclose(out_run_file);
-                run_index++;
-//                printf("last file %d\n", run_index);
-//                print_array(run_file_name,output_buffer,0, heap_end);
             }
         }
         fclose(fp);
     }
-    return run_index;
 }
 
 /* * * * * * * * * * * * * * * * * * * * * *
@@ -396,33 +366,29 @@ int main(int argc, char **argv)
     //get program start time stamps
     gettimeofday( &tms, NULL );
 
-//  long numRuns = getRuns("input.bin");
-    long numRuns = get_RS_runs("input.bin");
-    merge("input.bin", 0, numRuns, "out1.bin");
-//    mult_merge("input.bin",numRuns, "outs.bin");
-    // Basic Mergesort
-//    if (strcmp(argv[1],"--basic")==0)
-//    {
-//        long numRuns;
-//        numRuns = getRuns(argv[2]);
-//      merge(argv[2], 0, numRuns, argv[3]);
-//    }
-//    //Multistep Mergesort
-//    else if (strcmp(argv[1], "--multistep") == 0) {
-//        long numRuns = getRuns(argv[2]);
-//        mult_merge(argv[2], numRuns, argv[3]);
-//    }
-    // //Replacement selection mergesort
-    // if (strcmp(argv[1],"--replacement")==0)
-    // {
-    //  long numRuns = getRuns(argv[2]);
-    //  merge(argv[2], numRuns, argv[3]);
-    // }
+    //Basic Mergesort
+    if (strcmp(argv[1],"--basic")==0)
+    {
+        int numRuns = getRuns(argv[2]);
+        merge(argv[2], 0, numRuns, argv[3]);
+    }
+    //Multistep Mergesort
+    else if (strcmp(argv[1], "--multistep") == 0) {
+        int numRuns = getRuns(argv[2]);
+        mult_merge(argv[2], numRuns, argv[3]);
+    }
+     //Replacement selection mergesort
+    if (strcmp(argv[1],"--replacement")==0)
+    {
+        int numRuns = get_RS_runs(argv[2]);
+        merge(argv[2], 0, numRuns, argv[3]);
+    }
     //get program stop time stamps and calculate time elaspe
     gettimeofday( &tme, NULL );
     struct timeval time_total;
     time_total = timediff(tms, tme);
-    printf( "Time: %ld.%06d \n", time_total.tv_sec, time_total.tv_usec );
     // printf("sssssMY TESTLEF\n");
+    printf( "Time: %ld.%06d \n", time_total.tv_sec, time_total.tv_usec );
+
     return 0;
 }
