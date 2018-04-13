@@ -1,0 +1,2 @@
+gcc -std=c99 b.c -o b -lm
+scp sort.bin zzha@remote-linux.eos.ncsu.edu:
